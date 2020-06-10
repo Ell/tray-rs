@@ -1,0 +1,10 @@
+[package]
+name = "tray"
+version = "0.1.0"
+authors = ["Ell <alan@cattes.us>"]
+edition = "2018"
+
+[dependencies]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi= { version = "0.3.8", features = ["shellapi", "libloaderapi", "errhandlingapi", "impl-default"] }

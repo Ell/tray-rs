@@ -1,0 +1,18 @@
+* tray-rs
+cross platform system tray library
+
+* links
+- https://gist.github.com/TheSatoshiChiba/6dd94713669efd1636efe4ee026b67af
+- https://drywa.me/2017/07/02/simple-win32-window-with-rust/
+- http://www.winprog.org/tutorial/start.html
+- https://github.com/pachi/rust_winapi_examples/blob/master/src/bin/02_window.rs
+
+* notes
+#+BEGIN_SRC rust
+  fn main() {
+    let state = TrayState::new();
+
+    
+  }
+#+END_SRC
+ l1

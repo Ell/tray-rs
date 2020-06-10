@@ -1,0 +1,8 @@
+[package]
+name = "basic"
+version = "0.1.0"
+authors = ["Ell <alan@cattes.us>"]
+edition = "2018"
+
+[dependencies]
+tray = { path = "../../tray", version = "0.1.0" }
