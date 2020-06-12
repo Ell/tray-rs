@@ -5,6 +5,7 @@ mod platform;
 use crate::TrayMenu;
 use core::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub use platform::Platform;
 
@@ -39,5 +40,5 @@ pub trait TrayPlatform {
     fn update(&self) -> Result<()>;
     fn quit(&self) -> Result<()>;
     fn run(&self) -> Result<()>;
-    fn init(&mut self, menu: Rc<RefCell<TrayMenu>>) -> Result<()>;
+    fn init(&mut self, menu: Arc<RefCell<TrayMenu>>) -> Result<()>;
 }

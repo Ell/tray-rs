@@ -2,18 +2,20 @@ use tray::platform::Platform;
 use tray::{Tray, TrayItem, TrayMenu};
 
 fn main() {
+    let mut tray = Tray::new();
+
     let mut menu = TrayMenu::new();
+
+    menu.add_item().label("Enabled".to_string());
 
     menu.add_item().disable().label("Disabled".to_string());
 
     menu.add_divider();
 
     menu.add_item()
-        .checkbox(true)
-        .toggle_checked()
-        .label("Checkbox Checked".to_string())
+        .label("Toggle Checkbox".to_string())
         .on_click(|item: &mut TrayItem| {
-            item.toggle_checked().label("Checkbox Toggled".to_string());
+            item.toggle_checked();
         });
 
     menu.add_divider();
@@ -23,12 +25,18 @@ fn main() {
         .label("Test Submenu".to_string())
         .create_submenu();
 
-    submenu.add_item().label("Submenu Entry 1".to_string());
+    submenu
+        .add_item()
+        .label("Submenu Entry 1".to_string())
+        .on_click(|_| println!("clicked!"));
+
     submenu.add_item().label("Submenu Entry 2".to_string());
 
-    let mut tray = Tray::new();
+    menu.add_divider();
 
-    tray.add_menu(menu);
+    menu.add_item().label("Quit".to_string()).on_click(|_| {});
+
+    tray.add_menu(menu).unwrap();
 
     let platform = Platform::new();
 

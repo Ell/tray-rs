@@ -1,10 +1,15 @@
 use crate::platform::TrayPlatform;
 use crate::platform::TrayPlatformError;
+use crate::TrayItem;
 use crate::TrayMenu;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::io::Error;
 use std::ptr::null_mut;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
+use winapi::shared::windef::HBITMAP;
 use winapi::shared::windef::POINT;
 use winapi::um::libloaderapi::GetModuleHandleW;
 use winapi::um::shellapi::Shell_NotifyIconW;
@@ -15,15 +20,33 @@ use winapi::um::winuser::DestroyMenu;
 use winapi::um::winuser::DestroyWindow;
 use winapi::um::winuser::DispatchMessageW;
 use winapi::um::winuser::GetCursorPos;
+use winapi::um::winuser::GetMenuItemInfoW;
 use winapi::um::winuser::GetMessageW;
+use winapi::um::winuser::InsertMenuItemW;
+use winapi::um::winuser::InsertMenuW;
 use winapi::um::winuser::LoadCursorW;
 use winapi::um::winuser::LoadIconW;
 use winapi::um::winuser::PostQuitMessage;
 use winapi::um::winuser::RegisterClassW;
 use winapi::um::winuser::SetForegroundWindow;
 use winapi::um::winuser::SetMenuInfo;
+use winapi::um::winuser::TrackPopupMenu;
 use winapi::um::winuser::TranslateMessage;
+use winapi::um::winuser::MFS_CHECKED;
+use winapi::um::winuser::MFS_DISABLED;
+use winapi::um::winuser::MFT_STRING;
+use winapi::um::winuser::MF_BYCOMMAND;
+use winapi::um::winuser::MF_BYPOSITION;
+use winapi::um::winuser::MF_SEPARATOR;
+use winapi::um::winuser::MIIM_DATA;
+use winapi::um::winuser::MIIM_FTYPE;
+use winapi::um::winuser::MIIM_ID;
+use winapi::um::winuser::MIIM_STATE;
+use winapi::um::winuser::MIIM_STRING;
+use winapi::um::winuser::MIIM_SUBMENU;
 use winapi::um::winuser::MSG;
+use winapi::um::winuser::TPM_BOTTOMALIGN;
+use winapi::um::winuser::TPM_LEFTALIGN;
 use winapi::um::winuser::{WM_LBUTTONUP, WM_QUIT, WM_RBUTTONUP};
 
 use winapi::{
@@ -45,9 +68,13 @@ use winapi::{
     },
 };
 
+type Result<T> = std::result::Result<T, TrayPlatformError>;
+
 const WM_TRAY_CALLBACK: u32 = WM_USER + 1;
 
-type Result<T> = std::result::Result<T, TrayPlatformError>;
+thread_local! {
+    static APPLICATIONMENU: RefCell<Menu> = RefCell::new(Menu::new());
+}
 
 impl TrayPlatformError {
     pub fn from_win32_error(msg: &str) -> Self {
@@ -56,45 +83,6 @@ impl TrayPlatformError {
         Self {
             details: format!("{}: {}", &msg, last_error),
         }
-    }
-}
-
-fn to_wstring(value: &str) -> Vec<u16> {
-    use std::os::windows::ffi::OsStrExt;
-
-    std::ffi::OsStr::new(value)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect()
-}
-
-struct Menu {
-    pub hmenu: Option<HMENU>,
-    pub traymenu: Rc<RefCell<TrayMenu>>,
-}
-
-impl Menu {
-    pub fn new(traymenu: Rc<RefCell<TrayMenu>>) -> Self {
-        Self {
-            hmenu: None,
-            traymenu,
-        }
-    }
-
-    pub unsafe fn build(&mut self) -> Result<&mut Self> {
-        let hmenu = create_hmenu();
-
-        if let Some(hmenu) = self.hmenu {
-            DestroyMenu(hmenu);
-        }
-
-        self.hmenu = Some(hmenu.unwrap());
-
-        Ok(self)
-    }
-
-    pub fn update(&mut self) -> Result<()> {
-        Ok(())
     }
 }
 
@@ -187,12 +175,196 @@ unsafe fn create_hwnd(class_name: &str, hinstance: HINSTANCE) -> Result<HWND> {
     Ok(hwnd)
 }
 
-struct App {
-    pub menu: Menu,
+fn to_wstring(value: &str) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+
+    std::ffi::OsStr::new(value)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
+unsafe extern "system" fn window_proc(
+    hwnd: HWND,
+    msg: UINT,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_TRAY_CALLBACK => {
+            let param = lparam as UINT;
+
+            match param {
+                WM_LBUTTONUP => {}
+                WM_RBUTTONUP => {
+                    let mut point = POINT { x: 0, y: 0 };
+
+                    if GetCursorPos(&mut point as *mut POINT) == 0 {
+                        return 1;
+                    }
+
+                    SetForegroundWindow(hwnd);
+
+                    APPLICATIONMENU.with(|appmenu| {
+                        let hmenu = appmenu.borrow_mut().build().unwrap().hmenu.unwrap();
+
+                        TrackPopupMenu(
+                            hmenu,
+                            0,
+                            point.x,
+                            point.y,
+                            (TPM_BOTTOMALIGN | TPM_LEFTALIGN) as i32,
+                            hwnd,
+                            null_mut(),
+                        );
+                    })
+                }
+                _ => {}
+            }
+        }
+
+        WM_MENUCOMMAND => APPLICATIONMENU.with(|appmenu| {
+            let menuitem: Box<MENUITEMINFOW> = Box::new(MENUITEMINFOW {
+                fMask: MIIM_ID | MIIM_DATA,
+                ..Default::default()
+            });
+
+            let menuitem_ptr = Box::into_raw(menuitem);
+            let lpmii = menuitem_ptr as *mut MENUITEMINFOW;
+
+            dbg!(lpmii);
+
+            let hmenu = appmenu.borrow_mut().build().unwrap().hmenu.unwrap();
+
+            dbg!(hmenu);
+
+            let u_item = wparam as UINT;
+
+            if GetMenuItemInfoW(hmenu, u_item, 0, lpmii) == 1 {
+                println!("get succeed");
+
+                let tray_item = Box::from_raw(menuitem_ptr).dwItemData as *mut TrayItem;
+
+                if let Some(callback) = &(*tray_item).callback {
+                    callback(tray_item.as_mut().unwrap())
+                }
+            } else {
+                let error = TrayPlatformError::from_win32_error("Could not get menu item info");
+
+                println!("{:?}", error);
+
+                panic!(error);
+            };
+        }),
+
+        WM_CLOSE => {
+            DestroyWindow(hwnd);
+
+            return 0;
+        }
+
+        WM_DESTROY => {
+            PostQuitMessage(0);
+        }
+
+        _ => {}
+    };
+
+    DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
+#[derive(Default)]
+struct Menu {
+    pub hmenu: Option<HMENU>,
+    pub traymenu: Option<Arc<RefCell<TrayMenu>>>,
+}
+
+impl Menu {
+    pub fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
+    }
+
+    pub fn traymenu(&mut self, traymenu: Arc<RefCell<TrayMenu>>) -> &mut Self {
+        self.traymenu = Some(traymenu);
+
+        self
+    }
+
+    pub unsafe fn build(&mut self) -> Result<&mut Self> {
+        if let Some(hmenu) = self.hmenu {
+            DestroyMenu(hmenu);
+        }
+
+        let traymenu = self.traymenu.as_ref().unwrap();
+
+        let hmenu = self.build_hmenu(&traymenu.borrow(), 0).unwrap();
+
+        self.hmenu = Some(hmenu);
+
+        Ok(self)
+    }
+
+    unsafe fn build_hmenu(&self, traymenu: &TrayMenu, idx: u32) -> Result<HMENU> {
+        let hmenu = create_hmenu().unwrap();
+
+        for (i, item) in &mut traymenu.items.iter().rev().enumerate() {
+            let id = (i as u32 + idx + 1000) as u32;
+
+            let menu_item_data = Box::into_raw(Box::new(traymenu)) as ULONG_PTR;
+
+            let mut hmenu_item = MENUITEMINFOW {
+                cbSize: std::mem::size_of::<MENUITEMINFOW>() as UINT,
+                fMask: MIIM_FTYPE | MIIM_STRING | MIIM_ID | MIIM_STATE,
+                fType: MFT_STRING,
+                fState: 0 as UINT,
+                wID: id,
+                hSubMenu: 0 as HMENU,
+                hbmpChecked: 0 as HBITMAP,
+                hbmpUnchecked: 0 as HBITMAP,
+                dwItemData: menu_item_data,
+                dwTypeData: null_mut(),
+                cch: 0 as u32,
+                hbmpItem: 0 as HBITMAP,
+            };
+
+            if let Some(l) = &item.label {
+                let mut label = to_wstring(l);
+
+                hmenu_item.dwTypeData = label.as_mut_ptr();
+                hmenu_item.cch = (label.len() * 2) as u32;
+            }
+
+            if let Some(submenu) = &item.submenu {
+                hmenu_item.fMask |= MIIM_SUBMENU;
+                hmenu_item.hSubMenu = self.build_hmenu(submenu, id).unwrap();
+            }
+
+            if item.disabled {
+                hmenu_item.fState |= MFS_DISABLED;
+            }
+
+            if item.checked {
+                hmenu_item.fState |= MFS_CHECKED;
+            }
+
+            if InsertMenuItemW(hmenu, 0, 1, &hmenu_item as *const MENUITEMINFOW) == 0 {
+                return Err(TrayPlatformError::from_win32_error(
+                    "Error inserting menu item",
+                ));
+            }
+        }
+
+        Ok(hmenu)
+    }
+}
+
+#[derive(Default)]
+struct App {}
+
 impl App {
-    pub unsafe fn init(menu: Menu) -> Result<Self> {
+    pub unsafe fn init() -> Result<Self> {
         let hinstance = GetModuleHandleW(null_mut());
 
         let hwnd = create_hwnd("tray_rs_window", hinstance).unwrap();
@@ -208,7 +380,7 @@ impl App {
             ));
         }
 
-        Ok(Self { menu })
+        Ok(Self {})
     }
 
     pub unsafe fn update(&self) -> Result<()> {
@@ -227,58 +399,6 @@ impl App {
 
         Ok(())
     }
-}
-
-unsafe extern "system" fn window_proc(
-    hwnd: HWND,
-    msg: UINT,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    match msg {
-        WM_TRAY_CALLBACK => {
-            let param = lparam as UINT;
-
-            match param {
-                // TODO: event handler for clicking on icon
-                WM_LBUTTONUP => {}
-                WM_RBUTTONUP => {
-                    let mut point = POINT { x: 0, y: 0 };
-
-                    if GetCursorPos(&mut point as *mut POINT) == 0 {
-                        return 1;
-                    }
-
-                    SetForegroundWindow(hwnd);
-
-                    println!("clicked!");
-
-                    // TODO: get access to hmenu here
-                    // TODO: render popup menu
-                    // https://github.com/qdot/systray-rs/blob/master/src/api/win32/mod.rs#L98
-                }
-                _ => {}
-            }
-        }
-
-        WM_MENUCOMMAND => {}
-
-        WM_COMMAND => {}
-
-        WM_CLOSE => {
-            DestroyWindow(hwnd);
-
-            return 0;
-        }
-
-        WM_DESTROY => {
-            PostQuitMessage(0);
-        }
-
-        _ => {}
-    };
-
-    DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
 #[derive(Default)]
@@ -313,12 +433,15 @@ impl TrayPlatform for Platform {
         }
     }
 
-    fn init(&mut self, traymenu: Rc<RefCell<TrayMenu>>) -> Result<()> {
-        let menu = Menu::new(traymenu);
-
+    fn init(&mut self, traymenu: Arc<RefCell<TrayMenu>>) -> Result<()> {
         unsafe {
-            let app = App::init(menu).unwrap();
+            let app = App::init().unwrap();
+
             self.app = Some(app);
+
+            APPLICATIONMENU.with(|appmenu| {
+                appmenu.borrow_mut().traymenu(traymenu);
+            });
         }
 
         Ok(())

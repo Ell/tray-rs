@@ -1,9 +1,14 @@
+#[macro_use]
+extern crate lazy_static;
+
 pub mod platform;
 
 use crate::platform::TrayPlatform;
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::rc::Rc;
+use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, TrayError>;
 
@@ -35,14 +40,14 @@ impl std::error::Error for TrayError {
 #[derive(Default)]
 pub struct Tray {
     pub platform: Option<Box<dyn TrayPlatform>>,
-    pub menu: Rc<RefCell<TrayMenu>>,
+    pub menu: Arc<RefCell<TrayMenu>>,
 }
 
 impl Tray {
     pub fn new() -> Self {
         Tray {
             platform: None,
-            menu: Rc::new(RefCell::new(TrayMenu::new())),
+            menu: Arc::new(RefCell::new(TrayMenu::new())),
         }
     }
 
@@ -52,12 +57,10 @@ impl Tray {
         self
     }
 
-    pub fn add_menu(&mut self, menu: TrayMenu) -> RefMut<TrayMenu> {
-        let menu = Rc::new(RefCell::new(menu));
+    pub fn add_menu(&mut self, menu: TrayMenu) -> Result<()> {
+        self.menu = Arc::new(RefCell::new(menu));
 
-        self.menu = menu;
-
-        self.menu.borrow_mut()
+        Ok(())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -70,6 +73,8 @@ impl Tray {
             _ => Ok(()),
         }
     }
+
+    pub fn quit(self) {}
 }
 
 pub struct TrayIcon {
@@ -84,7 +89,7 @@ impl TrayIcon {
 
 #[derive(Default)]
 pub struct TrayMenu {
-    items: Vec<TrayItem>,
+    pub items: Vec<TrayItem>,
 }
 
 impl TrayMenu {
@@ -111,9 +116,9 @@ pub type TrayItemCallback = dyn Fn(&mut TrayItem) -> ();
 #[derive(Default)]
 pub struct TrayItem {
     label: Option<String>,
-    divider: Option<bool>,
+    divider: bool,
     disabled: bool,
-    checked: Option<bool>,
+    checked: bool,
     submenu: Option<TrayMenu>,
     callback: Option<Box<TrayItemCallback>>,
 }
@@ -121,6 +126,9 @@ pub struct TrayItem {
 impl TrayItem {
     pub fn new() -> Self {
         Self {
+            disabled: false,
+            checked: false,
+            divider: false,
             ..Default::default()
         }
     }
@@ -146,16 +154,7 @@ impl TrayItem {
     }
 
     pub fn divider(&mut self, divider: bool) -> &mut Self {
-        self.divider = Some(divider);
-
-        self
-    }
-
-    pub fn checkbox(&mut self, checked: bool) -> &mut Self {
-        match self.checked {
-            Some(_) => (),
-            _ => self.checked = Some(checked),
-        }
+        self.divider = divider;
 
         self
     }
@@ -167,7 +166,7 @@ impl TrayItem {
     }
 
     pub fn toggle_checked(&mut self) -> &mut Self {
-        self.checked = Some(!self.checked.unwrap());
+        self.checked = !self.checked;
 
         self
     }
