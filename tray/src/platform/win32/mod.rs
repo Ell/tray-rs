@@ -217,26 +217,24 @@ unsafe extern "system" fn window_proc(
         }
 
         WM_MENUCOMMAND => APPLICATIONMENU.with(|appmenu| {
-            let menuitem: Box<MENUITEMINFOW> = Box::new(MENUITEMINFOW {
+            let mut menuitem = MENUITEMINFOW {
                 fMask: MIIM_ID | MIIM_DATA,
                 cbSize: std::mem::size_of::<MENUITEMINFOW>() as DWORD,
                 ..Default::default()
-            });
+            };
 
-            let menuitem_ptr = Box::into_raw(menuitem);
-
-            let lpmii = menuitem_ptr as *mut MENUITEMINFOW;
+            let lpmii = &mut menuitem as *mut _;
 
             let hmenu = appmenu.borrow_mut().build().unwrap().hmenu.unwrap();
 
-            let u_item = wparam as u32 + 1000;
+            let u_item = wparam as u32;
 
             dbg!(u_item);
 
-            if GetMenuItemInfoW(hmenu, u_item, 0, lpmii) == 1 {
+            if GetMenuItemInfoW(hmenu, u_item, 1, lpmii) == 1 {
                 println!("get succeed");
 
-                let tray_item = menuitem_ptr.as_mut().unwrap().dwItemData as *mut TrayItem;
+                let tray_item = menuitem.dwItemData as *mut TrayItem;
 
                 dbg!(tray_item);
 
