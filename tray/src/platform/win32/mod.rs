@@ -3,12 +3,9 @@ use crate::platform::TrayPlatformError;
 use crate::TrayItem;
 use crate::TrayMenu;
 use std::cell::RefCell;
-use std::cell::UnsafeCell;
 use std::io::Error;
 use std::ptr::null_mut;
-use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
 use winapi::shared::windef::HBITMAP;
 use winapi::shared::windef::POINT;
 use winapi::um::libloaderapi::GetModuleHandleW;
@@ -23,7 +20,6 @@ use winapi::um::winuser::GetCursorPos;
 use winapi::um::winuser::GetMenuItemInfoW;
 use winapi::um::winuser::GetMessageW;
 use winapi::um::winuser::InsertMenuItemW;
-use winapi::um::winuser::InsertMenuW;
 use winapi::um::winuser::LoadCursorW;
 use winapi::um::winuser::LoadIconW;
 use winapi::um::winuser::PostQuitMessage;
@@ -35,9 +31,6 @@ use winapi::um::winuser::TranslateMessage;
 use winapi::um::winuser::MFS_CHECKED;
 use winapi::um::winuser::MFS_DISABLED;
 use winapi::um::winuser::MFT_STRING;
-use winapi::um::winuser::MF_BYCOMMAND;
-use winapi::um::winuser::MF_BYPOSITION;
-use winapi::um::winuser::MF_SEPARATOR;
 use winapi::um::winuser::MIIM_DATA;
 use winapi::um::winuser::MIIM_FTYPE;
 use winapi::um::winuser::MIIM_ID;
@@ -62,7 +55,7 @@ use winapi::{
         shellapi::{NIF_MESSAGE, NIM_ADD, NOTIFYICONDATAW},
         winuser::{
             self, CW_USEDEFAULT, MENUINFO, MENUITEMINFOW, MIM_APPLYTOSUBMENUS, MIM_STYLE,
-            MNS_NOTIFYBYPOS, WM_CLOSE, WM_COMMAND, WM_DESTROY, WM_MENUCOMMAND, WM_USER, WNDCLASSW,
+            MNS_NOTIFYBYPOS, WM_CLOSE, WM_DESTROY, WM_MENUCOMMAND, WM_USER, WNDCLASSW,
             WS_OVERLAPPEDWINDOW,
         },
     },
@@ -226,21 +219,21 @@ unsafe extern "system" fn window_proc(
         WM_MENUCOMMAND => APPLICATIONMENU.with(|appmenu| {
             let menuitem: Box<MENUITEMINFOW> = Box::new(MENUITEMINFOW {
                 fMask: MIIM_ID | MIIM_DATA,
+                cbSize: std::mem::size_of::<MENUITEMINFOW>() as DWORD,
                 ..Default::default()
             });
 
             let menuitem_ptr = Box::into_raw(menuitem);
-            let lpmii = menuitem_ptr as *mut MENUITEMINFOW;
 
-            dbg!(lpmii);
+            let lpmii = menuitem_ptr as *mut MENUITEMINFOW;
 
             let hmenu = appmenu.borrow_mut().build().unwrap().hmenu.unwrap();
 
-            dbg!(hmenu);
+            let u_item = wparam as *mut u32;
 
-            let u_item = wparam as UINT;
+            dbg!(u_item);
 
-            if GetMenuItemInfoW(hmenu, u_item, 0, lpmii) == 1 {
+            if GetMenuItemInfoW(hmenu, *u_item, 0, lpmii) == 1 {
                 println!("get succeed");
 
                 let tray_item = Box::from_raw(menuitem_ptr).dwItemData as *mut TrayItem;
