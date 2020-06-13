@@ -236,7 +236,7 @@ unsafe extern "system" fn window_proc(
             if GetMenuItemInfoW(hmenu, *u_item, 0, lpmii) == 1 {
                 println!("get succeed");
 
-                let tray_item = Box::from_raw(menuitem_ptr).dwItemData as *mut TrayItem;
+                let tray_item = menuitem_ptr.as_mut().unwrap().dwItemData as *mut TrayItem;
 
                 if let Some(callback) = &(*tray_item).callback {
                     callback(tray_item.as_mut().unwrap())
