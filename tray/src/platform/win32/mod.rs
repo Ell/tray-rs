@@ -229,14 +229,16 @@ unsafe extern "system" fn window_proc(
 
             let hmenu = appmenu.borrow_mut().build().unwrap().hmenu.unwrap();
 
-            let u_item = wparam as *mut u32;
+            let u_item = wparam as u32 + 1000;
 
             dbg!(u_item);
 
-            if GetMenuItemInfoW(hmenu, *u_item, 0, lpmii) == 1 {
+            if GetMenuItemInfoW(hmenu, u_item, 0, lpmii) == 1 {
                 println!("get succeed");
 
                 let tray_item = menuitem_ptr.as_mut().unwrap().dwItemData as *mut TrayItem;
+
+                dbg!(tray_item);
 
                 if let Some(callback) = &(*tray_item).callback {
                     callback(tray_item.as_mut().unwrap())
