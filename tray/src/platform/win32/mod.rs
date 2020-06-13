@@ -225,7 +225,11 @@ unsafe extern "system" fn window_proc(
 
             let lpmii = &mut menuitem as *mut _;
 
+            dbg!(lpmii);
+
             let hmenu = appmenu.borrow_mut().build().unwrap().hmenu.unwrap();
+
+            dbg!(hmenu);
 
             let u_item = wparam as u32;
 
@@ -238,9 +242,9 @@ unsafe extern "system" fn window_proc(
 
                 dbg!(tray_item);
 
-                if let Some(callback) = &(*tray_item).callback {
-                    callback(tray_item.as_mut().unwrap())
-                }
+            // if let Some(callback) = &(*tray_item).callback {
+            //     callback(tray_item.as_mut().unwrap())
+            // }
             } else {
                 let error = TrayPlatformError::from_win32_error("Could not get menu item info");
 
@@ -303,9 +307,11 @@ impl Menu {
         let hmenu = create_hmenu().unwrap();
 
         for (i, item) in &mut traymenu.items.iter().rev().enumerate() {
-            let id = (i as u32 + idx + 1000) as u32;
+            let id = (i as u32 + idx) as u32;
 
-            let menu_item_data = Box::into_raw(Box::new(traymenu)) as ULONG_PTR;
+            let menu_item_data = traymenu as *const _ as usize;
+
+            dbg!(menu_item_data);
 
             let mut hmenu_item = MENUITEMINFOW {
                 cbSize: std::mem::size_of::<MENUITEMINFOW>() as UINT,
