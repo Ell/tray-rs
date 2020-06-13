@@ -30,7 +30,6 @@ use winapi::um::winuser::TrackPopupMenu;
 use winapi::um::winuser::TranslateMessage;
 use winapi::um::winuser::MFS_CHECKED;
 use winapi::um::winuser::MFS_DISABLED;
-use winapi::um::winuser::MFT_STRING;
 use winapi::um::winuser::MIIM_DATA;
 use winapi::um::winuser::MIIM_FTYPE;
 use winapi::um::winuser::MIIM_ID;
@@ -240,7 +239,7 @@ unsafe extern "system" fn window_proc(
 
                 let tray_item = menuitem.dwItemData as *mut TrayItem;
 
-                dbg!(tray_item);
+                println!("{:?}", (*tray_item).label.as_ref().map(|v| v.as_bytes()));
 
             // if let Some(callback) = &(*tray_item).callback {
             //     callback(tray_item.as_mut().unwrap())
@@ -270,16 +269,22 @@ unsafe extern "system" fn window_proc(
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-#[derive(Default)]
 struct Menu {
     pub hmenu: Option<HMENU>,
     pub traymenu: Option<Arc<RefCell<TrayMenu>>>,
 }
 
+impl Drop for Menu {
+    fn drop(&mut self) {
+        println!("menu killed");
+    }
+}
+
 impl Menu {
     pub fn new() -> Self {
         Self {
-            ..Default::default()
+            hmenu: None,
+            traymenu: None,
         }
     }
 
@@ -315,8 +320,8 @@ impl Menu {
 
             let mut hmenu_item = MENUITEMINFOW {
                 cbSize: std::mem::size_of::<MENUITEMINFOW>() as UINT,
-                fMask: MIIM_FTYPE | MIIM_STRING | MIIM_ID | MIIM_STATE,
-                fType: MFT_STRING,
+                fMask: MIIM_FTYPE | MIIM_STRING | MIIM_ID | MIIM_STATE | MIIM_DATA,
+                fType: 0,
                 fState: 0 as UINT,
                 wID: id,
                 hSubMenu: 0 as HMENU,
@@ -328,9 +333,10 @@ impl Menu {
                 hbmpItem: 0 as HBITMAP,
             };
 
-            if let Some(l) = &item.label {
-                let mut label = to_wstring(l);
+            let mut label;
 
+            if let Some(l) = &item.label {
+                label = to_wstring(l);
                 hmenu_item.dwTypeData = label.as_mut_ptr();
                 hmenu_item.cch = (label.len() * 2) as u32;
             }
@@ -359,7 +365,8 @@ impl Menu {
     }
 }
 
-#[derive(Default)]
+#[derive(Educe)]
+#[educe(Debug)]
 struct App {}
 
 impl App {
@@ -400,7 +407,8 @@ impl App {
     }
 }
 
-#[derive(Default)]
+#[derive(Educe)]
+#[educe(Debug, Default)]
 pub struct Platform {
     app: Option<App>,
 }

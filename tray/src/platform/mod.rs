@@ -4,6 +4,7 @@ mod platform;
 
 use crate::TrayMenu;
 use core::cell::RefCell;
+use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -36,7 +37,7 @@ impl std::error::Error for TrayPlatformError {
     }
 }
 
-pub trait TrayPlatform {
+pub trait TrayPlatform: Debug {
     fn update(&self) -> Result<()>;
     fn quit(&self) -> Result<()>;
     fn run(&self) -> Result<()>;

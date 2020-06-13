@@ -1,13 +1,11 @@
 #[macro_use]
-extern crate lazy_static;
+extern crate educe;
 
 pub mod platform;
 
 use crate::platform::TrayPlatform;
-use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::cell::RefMut;
-use std::rc::Rc;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, TrayError>;
@@ -37,7 +35,7 @@ impl std::error::Error for TrayError {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Tray {
     pub platform: Option<Box<dyn TrayPlatform>>,
     pub menu: Arc<RefCell<TrayMenu>>,
@@ -68,6 +66,8 @@ impl Tray {
 
         platform.init(self.menu.clone()).unwrap();
 
+        println!("{:?}", self.menu);
+
         match platform.run() {
             Err(e) => Err(TrayError::new(&e.details)),
             _ => Ok(()),
@@ -87,7 +87,7 @@ impl TrayIcon {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TrayMenu {
     pub items: Vec<TrayItem>,
 }
@@ -111,15 +111,24 @@ impl TrayMenu {
     }
 }
 
+impl Drop for TrayMenu {
+    fn drop(&mut self) {
+        println!("traymenu killed {:?}", self);
+    }
+}
+
 pub type TrayItemCallback = dyn Fn(&mut TrayItem) -> ();
 
-#[derive(Default)]
+#[derive(Educe)]
+#[educe(Debug, Default)]
 pub struct TrayItem {
     label: Option<String>,
     divider: bool,
     disabled: bool,
     checked: bool,
     submenu: Option<TrayMenu>,
+
+    #[educe(Debug(ignore))]
     callback: Option<Box<TrayItemCallback>>,
 }
 
